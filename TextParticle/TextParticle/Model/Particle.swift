@@ -4,71 +4,100 @@
 //
 //  Created by Minsang Choi on 7/24/24.
 //
+
 import SwiftUI
+
+// MARK: - ParticleContent
+/// An enum to differentiate between text and SF Symbols for a particle.
+enum ParticleContent: Equatable {
+    static func == (lhs: ParticleContent, rhs: ParticleContent) -> Bool {
+        switch (lhs, rhs) {
+        case (.text(let a), .text(let b)):
+            // Compare associated String values for the .text case
+            return a == b
+        case (.sfSymbol(let a), .sfSymbol(let b)):
+            // Compare associated String values for the .sfSymbol case
+            return a == b
+        case (.view(_), .view(_)):
+            // For views, equality cannot be determined reliably, so return false
+            return true
+        default:
+            // Different cases are not equal
+            return false
+        }
+    }
+    
+    case text(String)
+    case sfSymbol(String)
+    case view(AnyView)
+    
+    var higherDensity: Bool {
+        switch self {
+        case .text(let _):
+            return true
+        case .view(let _):
+            return false
+        default:
+            return false
+        }
+    }
+}
 
 struct Particle {
     
     var x: Double
     var y: Double
-    let baseX: Double
-    let baseY: Double
+    var baseX: Double
+    var baseY: Double
     let density: Double
+    var z: Double
+    var color: Color
     var isStopped = false
+    var velocityX: Double = 0.0
+    var velocityY: Double = 0.0
     
-    
-    mutating func update(dragPosition: CGPoint?, dragVelocity: CGSize?) {
+    mutating func update(dragPosition: CGPoint?, dragVelocity: CGSize?, isFirstFrame: Bool) {
+        // Spring-damper simulation constants for natural motion
+        let springConstant: Double = 0.002
+        let damping: Double = isFirstFrame ? 0.55 : 0.7
         
+        // Calculate the displacement from the base position
         let dx = baseX - x
         let dy = baseY - y
-        let distance = sqrt(dx * dx + dy * dy)
-        let forceDirectionX = dx / distance
-        let forceDirectionY = dy / distance
         
-        let maxDistance: Double = 280
-        let force = (maxDistance - distance) / maxDistance
-        let directionX = forceDirectionX * force * density
-        let directionY = forceDirectionY * force * density
+        // Compute acceleration proportional to the displacement and density
+        let ax = dx * springConstant * density
+        let ay = dy * springConstant * density
         
+        // Update velocity with acceleration and apply damping to simulate friction
+        velocityX = (velocityX + ax) * damping
+        velocityY = (velocityY + ay) * damping
         
-        // Apply slow movement when close to the base position
-        if distance < 30 {
-            x += directionX * 0.01
-            y += directionY * 0.01
-        } else {
-            if distance < maxDistance {
-                x += directionX * 2.5
-                y += directionY * 2.5
-            } else {
-                if x != baseX {
-                    let dx = x - baseX
-                    x -= dx / 10
-                }
-                
-                if y != baseY {
-                    let dy = y - baseY
-                    y -= dy / 10
-                }
-            }
-        }
-                
-        // React to drag gesture with increased responsiveness
+        // Update position based on the new velocity
+        x += velocityX
+        y += velocityY
         
+        // If a drag gesture is active, adjust velocity for interactive response
         if let dragPosition = dragPosition {
-            
-            let dragDx = x - dragPosition.x
-            let dragDy = y - dragPosition.y
+            let dragDx = x - Double(dragPosition.x)
+            let dragDy = y - Double(dragPosition.y)
             
             var velocityF = 0.0
-            
             if let dragVelocity = dragVelocity {
-                velocityF = max(abs(dragVelocity.width),abs(dragVelocity.height))
+                velocityF = max(abs(dragVelocity.width), abs(dragVelocity.height))
             }
             
             let dragDistance = sqrt(dragDx * dragDx + dragDy * dragDy)
             let dragForce = (200 - min(dragDistance, 200)) / 200 + velocityF * 0.00005
             
-            x += dragDx * dragForce * 0.5
-            y += dragDy * dragForce * 0.5
+            // Slightly adjust the velocity based on the drag force
+            velocityX += dragDx * dragForce * 0.005
+            velocityY += dragDy * dragForce * 0.005
         }
+        
+        // Add a constant, subtle noise to maintain slight movement even when nearly static
+        let noiseLevel = 0.1
+        velocityX += Double.random(in: -noiseLevel...noiseLevel)
+        velocityY += Double.random(in: -noiseLevel...noiseLevel)
     }
 }
